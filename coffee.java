@@ -57,5 +57,11 @@ import java.util.*;
         return totalPrice;
     }
 
+    private double selectItem(String itemName){
+       if(inventory.checkIfItemExists(inventory.getItemForName())){
+        
+       }
+    }
+
     getREfund()
  }
