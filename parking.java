@@ -1,7 +1,6 @@
 import java.util.ArrayList;
 import java.util.List;
 
-
 /*
  * 
  * Support for multiple vehicle types:
@@ -26,63 +25,23 @@ Availability tracking:
 
 The system can report the number of available spots for each vehicle type.
  */
-class ParkingLot {
-    private List<ParkingSpot> spots;
 
-    public ParkingLot(int carSpots, int motorcycleSpots, int truckSpots) {
-        spots = new ArrayList<>();
-        for (int i = 0; i < carSpots; i++) {
-            spots.add(new ParkingSpot(VehicleType.CAR));
-        }
-        for (int i = 0; i < motorcycleSpots; i++) {
-            spots.add(new ParkingSpot(VehicleType.MOTORCYCLE));
-        }
-        for (int i = 0; i < truckSpots; i++) {
-            spots.add(new ParkingSpot(VehicleType.TRUCK));
-        }
-    }
+import java.util.*;
 
-    public boolean parkVehicle(Vehicle vehicle) {
-        for (ParkingSpot spot : spots) {
-            if (spot.canPark(vehicle)) {
-                spot.park(vehicle);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public boolean removeVehicle(Vehicle vehicle) {
-        for (ParkingSpot spot : spots) {
-            if (spot.getParkedVehicle() == vehicle) {
-                spot.removeVehicle();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public int getAvailableSpots(VehicleType type) {
-        int count = 0;
-        for (ParkingSpot spot : spots) {
-            if (spot.getType() == type && spot.isAvailable()) {
-                count++;
-            }
-        }
-        return count;
-    }
+enum SpotSize {
+    SMALL, MEDIUM, LARGE
 }
 
 class ParkingSpot {
-    private VehicleType type;
+    private SpotSize size;
     private Vehicle parkedVehicle;
 
-    public ParkingSpot(VehicleType type) {
-        this.type = type;
+    public ParkingSpot(SpotSize size) {
+        this.size = size;
     }
 
     public boolean canPark(Vehicle vehicle) {
-        return isAvailable() && type == vehicle.getType();
+        return isAvailable() && vehicle.fitsIn(size);
     }
 
     public void park(Vehicle vehicle) {
@@ -97,52 +56,100 @@ class ParkingSpot {
         return parkedVehicle == null;
     }
 
-    public VehicleType getType() {
-        return type;
-    }
-
+  
     public Vehicle getParkedVehicle() {
         return parkedVehicle;
     }
 }
+class ParkingLot {
+    private Map<SpotSize, List<ParkingSpot>> spotMap;
+    private Map<String, ParkingSpot> ticketSpotMap;
+    private int ticketCounter = 0;
 
-enum VehicleType {
-    MOTORCYCLE, CAR, TRUCK
+    public ParkingLot(int smallSpots, int mediumSpots, int largeSpots) {
+        spotMap = new HashMap<>();
+        ticketSpotMap = new HashMap<>();
+
+        spotMap.put(SpotSize.SMALL, new ArrayList<>());
+        spotMap.put(SpotSize.MEDIUM, new ArrayList<>());
+        spotMap.put(SpotSize.LARGE, new ArrayList<>());
+
+        for (int i = 0; i < smallSpots; i++) {
+            spotMap.get(SpotSize.SMALL).add(new ParkingSpot(SpotSize.SMALL));
+        }
+        for (int i = 0; i < mediumSpots; i++) {
+            spotMap.get(SpotSize.MEDIUM).add(new ParkingSpot(SpotSize.MEDIUM));
+        }
+        for (int i = 0; i < largeSpots; i++) {
+            spotMap.get(SpotSize.LARGE).add(new ParkingSpot(SpotSize.LARGE));
+        }
+    }
+
+    public String parkVehicle(Vehicle vehicle) {
+        for (SpotSize size : SpotSize.values()) {
+            if (vehicle.fitsIn(size)) {
+                List<ParkingSpot> spots = spotMap.get(size);
+                for (ParkingSpot spot : spots) {
+                    if (spot.isAvailable()) {
+                        spot.park(vehicle);
+                        String ticket = generateTicket(vehicle);
+                        ticketSpotMap.put(ticket, spot);
+                        return ticket;
+                    }
+                }
+            }
+        }
+        return null; // No available spot
+    }
+
+    public boolean removeVehicle(String ticket) {
+        if (ticketSpotMap.containsKey(ticket)) {
+            ParkingSpot spot = ticketSpotMap.remove(ticket);
+            spot.removeVehicle();
+            return true;
+        }
+        return false;
+    }
+
+    private String generateTicket(Vehicle vehicle) {
+        ticketCounter++;
+        String ticket = "TICKET-" + ticketCounter;
+        vehicle.setTicket(ticket);
+        return ticket;
+    }
 }
+
 
 abstract class Vehicle {
     private String licensePlate;
-    private VehicleType type;
+    private SpotSize requiredSize;
+    private String ticket;
 
-    public Vehicle(String licensePlate, VehicleType type) {
+    public Vehicle(String licensePlate, SpotSize requiredSize) {
         this.licensePlate = licensePlate;
-        this.type = type;
+        this.requiredSize = requiredSize;
     }
 
     public String getLicensePlate() {
         return licensePlate;
     }
 
-    public VehicleType getType() {
-        return type;
+    public boolean fitsIn(SpotSize spotSize) {
+        return spotSize.ordinal() >= requiredSize.ordinal();
     }
-}
 
-class Motorcycle extends Vehicle {
-    public Motorcycle(String licensePlate) {
-        super(licensePlate, VehicleType.MOTORCYCLE);
+    public void setTicket(String ticket) {
+        this.ticket = ticket;
+    }
+
+    public String getTicket() {
+        return ticket;
     }
 }
 
 class Car extends Vehicle {
     public Car(String licensePlate) {
-        super(licensePlate, VehicleType.CAR);
-    }
-}
-
-class Truck extends Vehicle {
-    public Truck(String licensePlate) {
-        super(licensePlate, VehicleType.TRUCK);
+        super(licensePlate, SpotSize.SMALL);
     }
 }
 
@@ -150,26 +157,17 @@ public class ParkingSystem {
     public static void main(String[] args) {
         ParkingLot parkingLot = new ParkingLot(3, 2, 1);
 
-        Vehicle car = new Car("CAR123");
-        Vehicle motorcycle = new Motorcycle("MOTO456");
-        Vehicle truck = new Truck("TRUCK789");
+        Vehicle car1 = new Car("CAR123");
 
-        System.out.println("Available car spots: " + parkingLot.getAvailableSpots(VehicleType.CAR));
-        System.out.println("Available motorcycle spots: " + parkingLot.getAvailableSpots(VehicleType.MOTORCYCLE));
-        System.out.println("Available truck spots: " + parkingLot.getAvailableSpots(VehicleType.TRUCK));
+        System.out.println("Available small spots: " + parkingLot.getAvailableSpots(SpotSize.SMALL));
 
-        parkingLot.parkVehicle(car);
-        parkingLot.parkVehicle(motorcycle);
-        parkingLot.parkVehicle(truck);
+        String ticket = parkingLot.parkVehicle(car1);
+        System.out.println("Car parked with ticket: " + ticket);
 
-        System.out.println("\nAfter parking vehicles:");
-        System.out.println("Available car spots: " + parkingLot.getAvailableSpots(VehicleType.CAR));
-        System.out.println("Available motorcycle spots: " + parkingLot.getAvailableSpots(VehicleType.MOTORCYCLE));
-        System.out.println("Available truck spots: " + parkingLot.getAvailableSpots(VehicleType.TRUCK));
+        System.out.println("Available small spots: " + parkingLot.getAvailableSpots(SpotSize.SMALL));
 
-        parkingLot.removeVehicle(car);
-
-        System.out.println("\nAfter removing a car:");
-        System.out.println("Available car spots: " + parkingLot.getAvailableSpots(VehicleType.CAR));
+        parkingLot.removeVehicle(ticket);
+        System.out.println("After removing car:");
+        System.out.println("Available small spots: " + parkingLot.getAvailableSpots(SpotSize.SMALL));
     }
 }
