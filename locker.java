@@ -1,110 +1,132 @@
 import java.util.*;
 
-enum Size {
-    SMALL, MEDIUM, LARGE
+// Enum for Package Size
+enum PackageSize {
+    SMALL, MEDIUM, LARGE;
 }
 
-class Locker {
-    private String id;
-    private Size size;
-    private boolean isOccupied;
-    private Package currentPackage;
-
-    public Locker(String id, Size size) {
-        this.id = id;
-        this.size = size;
-        this.isOccupied = false;
-        this.currentPackage = null;
-    }
-
-    public String getId() { return id; }
-    public Size getSize() { return size; }
-    public boolean isOccupied() { return isOccupied; }
-    public Package getCurrentPackage() { return currentPackage; }
-
-    public void assignPackage(Package pkg) {
-        this.currentPackage = pkg;
-        this.isOccupied = true;
-    }
-
-    public Package removePackage() {
-        Package pkg = this.currentPackage;
-        this.currentPackage = null;
-        this.isOccupied = false;
-        return pkg;
-    }
-}
-
+// Package Class
 class Package {
-    private String id;
-    private Size size;
+    private final String trackingId;
+    private final PackageSize size;
 
-    public Package(String id, Size size) {
-        this.id = id;
+    public Package(PackageSize size) {
+        this.trackingId = generateTrackingId();
         this.size = size;
     }
 
-    public String getId() { return id; }
-    public Size getSize() { return size; }
+    private String generateTrackingId() {
+        return "PKG-" + (new Random().nextInt(9000) + 1000);
+    }
+
+    public String getTrackingId() {
+        return trackingId;
+    }
+
+    public PackageSize getSize() {
+        return size;
+    }
 }
 
-class LockerSystem {
-    private Map<Size, Queue<Locker>> availableLockers;
-    private Map<String, Locker> occupiedLockers;
+// Locker Class
+class Locker {
+    private final int lockerId;
+    private final PackageSize lockerSize;
+    private boolean isOccupied;
+    private Package storedPackage;
 
-    public LockerSystem() {
-        availableLockers = new EnumMap<>(Size.class);
-        for (Size size : Size.values()) {
-            availableLockers.put(size, new LinkedList<>());
+    public Locker(int lockerId, PackageSize lockerSize) {
+        this.lockerId = lockerId;
+        this.lockerSize = lockerSize;
+        this.isOccupied = false;
+        this.storedPackage = null;
+    }
+
+    public boolean isAvailableFor(Package pack) {
+        return !isOccupied && canFitPackage(pack);
+    }
+
+    private boolean canFitPackage(Package pack) {
+        return pack.getSize().ordinal() <= lockerSize.ordinal(); // SMALL fits in all, MEDIUM in M/L, LARGE in L
+    }
+
+    public String storePackage(Package pack) {
+        if (!isAvailableFor(pack)) {
+            return null;
         }
-        occupiedLockers = new HashMap<>();
+        this.storedPackage = pack;
+        this.isOccupied = true;
+        return pack.getTrackingId();
     }
 
-    public void addLocker(Locker locker) {
-        availableLockers.get(locker.getSize()).add(locker);
+    public boolean retrievePackage(String trackingId) {
+        if (isOccupied && storedPackage != null && storedPackage.getTrackingId().equals(trackingId)) {
+            isOccupied = false;
+            storedPackage = null;
+            return true;
+        }
+        return false; // Invalid code or already empty
     }
 
-    public String assignPackage(Package pkg) {
-        for (Size size : Size.values()) {
-            if (size.ordinal() >= pkg.getSize().ordinal() && !availableLockers.get(size).isEmpty()) {
-                Locker locker = availableLockers.get(size).poll();
-                locker.assignPackage(pkg);
-                occupiedLockers.put(pkg.getId(), locker);
-                return locker.getId();
+    public int getLockerId() {
+        return lockerId;
+    }
+
+    public PackageSize getLockerSize() {
+        return lockerSize;
+    }
+}
+
+// Locker System
+class LockerSystem {
+    private final List<Locker> lockers;
+
+    public LockerSystem(int small, int medium, int large) {
+        lockers = new ArrayList<Locker>();
+
+        for (int i = 1; i <= small; i++) lockers.add(new Locker(i, PackageSize.SMALL));
+        for (int i = 1; i <= medium; i++) lockers.add(new Locker(small + i, PackageSize.MEDIUM));
+        for (int i = 1; i <= large; i++) lockers.add(new Locker(small + medium + i, PackageSize.LARGE));
+    }
+
+    public String depositPackage(Package pack) {
+        for (Locker locker : lockers) {
+            if (locker.isAvailableFor(pack)) {
+                return "Locker " + locker.getLockerId() + " (Size: " + locker.getLockerSize() + ") - Code: " + locker.storePackage(pack);
             }
         }
-        return null;
+        return "No available lockers for package size: " + pack.getSize();
     }
 
-    public Package retrievePackage(String packageId) {
-        Locker locker = occupiedLockers.remove(packageId);
-        if (locker != null) {
-            Package pkg = locker.removePackage();
-            availableLockers.get(locker.getSize()).add(locker);
-            return pkg;
+    public boolean retrievePackage(int lockerId, String trackingId) {
+        for (Locker locker : lockers) {
+            if (locker.getLockerId() == lockerId) {
+                return locker.retrievePackage(trackingId);
+            }
         }
-        return null;
+        return false;
     }
 }
 
-public class AmazonLockerSystem {
+// Main Class
+public class AmazonLockerApp {
     public static void main(String[] args) {
-        LockerSystem system = new LockerSystem();
-        
-        // Add lockers
-        system.addLocker(new Locker("S1", Size.SMALL));
-        system.addLocker(new Locker("M1", Size.MEDIUM));
-        system.addLocker(new Locker("L1", Size.LARGE));
+        LockerSystem system = new LockerSystem(2, 2, 1); // 2 Small, 2 Medium, 1 Large
 
-        // Assign a package
-        Package pkg = new Package("P1", Size.MEDIUM);
-        String lockerId = system.assignPackage(pkg);
-        System.out.println("Package P1 assigned to locker: " + lockerId);
+        Package smallPackage = new Package(PackageSize.SMALL);
+        Package largePackage = new Package(PackageSize.LARGE);
 
-        // Retrieve the package
-        Package retrievedPkg = system.retrievePackage("P1");
-        if (retrievedPkg != null) {
-            System.out.println("Retrieved package: " + retrievedPkg.getId());
-        }
+        String receipt1 = system.depositPackage(smallPackage);
+        System.out.println(receipt1);
+
+        String receipt2 = system.depositPackage(largePackage);
+        System.out.println(receipt2);
+
+        // Extract locker ID & code for retrieval (mocked for demo)
+        int lockerId = Integer.parseInt(receipt1.split(" ")[1]);
+        String trackingId = receipt1.split(": ")[1];
+
+        boolean success = system.retrievePackage(lockerId, trackingId);
+        System.out.println("Retrieval Successful: " + success);
     }
 }
